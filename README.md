@@ -21,6 +21,20 @@ interested in analyzing the Cyclistic historical bike trip data to identify tren
 
 - Code: in the `code` folder
 
+- Some key findings are:
+
+1. Member and casual rides very differently in both the number of rides and ride length
+
+![Fig 1. Member vs. casual rides](fig/fig1_casual_member.png)
+
+2. Casual rides more often on weekend
+
+![Fig 2. Rides by day of week](fig/fig2_by_weekdays.png)
+
+3. Member rides more frequently out of working hours
+
+![Fig 3. Rides in and out of working hours](fig/fig3_by_working_hours.png)
+
 # Share 
 
 - Presentation of the results: [Google slide](https://docs.google.com/presentation/d/1b1iyuXeipWlrtTCtgPX3YKdnJyvH0zPJM-VqOaRT40E/edit?usp=sharing)
