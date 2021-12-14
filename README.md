@@ -21,7 +21,7 @@ interested in analyzing the Cyclistic historical bike trip data to identify tren
 
 # Analyze
 
-- Code: in the `code` folder
+- Code: in the `code` folder, we have an [Rmd code file](code/01_Cyclistic.Rmd).
 
 - Some key findings are:
 
