@@ -1,0 +1,390 @@
+---
+title: "01_Cyclistic"
+author: "Richard"
+date: "12/11/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load necessary packages:
+```{r}
+library(tidyverse)
+library(lubridate)
+library(skimr)
+library(ggplot2)
+```
+
+
+# 1. Import data
+```{r}
+Q2_19 = read_csv("data/raw/csv/Divvy_Trips_2019_Q2.csv")
+Q3_19 = read_csv("data/raw/csv/Divvy_Trips_2019_Q3.csv")
+Q4_19 = read_csv("data/raw/csv/Divvy_Trips_2019_Q4.csv")
+Q1_20 = read_csv("data/raw/csv/Divvy_Trips_2020_Q1.csv")
+```
+
+# 2. Wrangle data and Combine into one file
+
+First, check the column names, because we notice that the `Q1_20` file has 13 columns, while other files have 12 columns only.
+```{r}
+names(Q2_19) 
+names(Q3_19)
+names(Q4_19)
+names(Q1_20)
+```
+
+It seems that the company changes their name standards from 2020 onward. So, it is better to change names to fit this new standard of the company.
+```{r}
+Q2_19 <- Q2_19 %>% 
+  rename(ride_id = "01 - Rental Details Rental ID"
+         ,rideable_type = "01 - Rental Details Bike ID" 
+         ,started_at = "01 - Rental Details Local Start Time"  
+         ,ended_at = "01 - Rental Details Local End Time"  
+         ,start_station_name = "03 - Rental Start Station Name" 
+         ,start_station_id = "03 - Rental Start Station ID"
+         ,end_station_name = "02 - Rental End Station Name" 
+         ,end_station_id = "02 - Rental End Station ID"
+         ,member_casual = "User Type")
+
+Q3_19 <- Q3_19 %>% 
+  rename(ride_id = trip_id
+         ,rideable_type = bikeid 
+         ,started_at = start_time  
+         ,ended_at = end_time  
+         ,start_station_name = from_station_name 
+         ,start_station_id = from_station_id 
+         ,end_station_name = to_station_name 
+         ,end_station_id = to_station_id 
+         ,member_casual = usertype)
+
+Q4_19 <- Q4_19 %>% 
+  rename(ride_id = trip_id
+         ,rideable_type = bikeid 
+         ,started_at = start_time  
+         ,ended_at = end_time  
+         ,start_station_name = from_station_name 
+         ,start_station_id = from_station_id 
+         ,end_station_name = to_station_name 
+         ,end_station_id = to_station_id 
+         ,member_casual = usertype)
+
+```
+
+Second, check data types of every columns to see if they are consistent across files.
+```{r}
+str(Q2_19)
+str(Q3_19)
+str(Q4_19)
+str(Q1_20)
+```
+
+We convert `ride_id` and `rideable_type` to characters to meet 2020 tape:
+```{r}
+Q2_19 <-  Q2_19 %>% mutate(ride_id = as.character(ride_id),
+                           rideable_type = as.character(rideable_type)) 
+Q3_19 <-  Q3_19 %>% mutate(ride_id = as.character(ride_id),
+                           rideable_type = as.character(rideable_type)) 
+Q4_19 <-  Q4_19 %>% mutate(ride_id = as.character(ride_id),
+                           rideable_type = as.character(rideable_type)) 
+```
+
+Third, combine all together:
+```{r}
+Trip = bind_rows(Q2_19, Q3_19, Q4_19, Q1_20)
+```
+
+
+Keep only necessary variables and drop not-need variables:
+```{r}
+Trip <- Trip %>%  
+  select(-c(start_lat, start_lng, end_lat, end_lng, birthyear, gender, 
+            "01 - Rental Details Duration In Seconds Uncapped", 
+            "05 - Member Details Member Birthday Year", 
+            "Member Gender", "tripduration"))
+
+head(Trip)
+```
+
+# 3. Clean up and add data to prepare for analysis
+
+First, inspect the data again:
+```{r}
+colnames(Trip)  #List of column names
+nrow(Trip)  #How many rows are in data frame?
+dim(Trip)  #Dimensions of the data frame?
+head(Trip)  #See the first 6 rows of data frame.  Also tail(all_trips)
+str(Trip)  #See list of columns and data types (numeric, character, etc)
+skim_without_charts(Trip)  #Statistical summary of data. Mainly for numerics
+```
+
+It is not consistent in the way we encode subscriber and casual: use two names for the same group. So, we fix it for consistency.
+```{r}
+Trip %>% count(member_casual)
+Trip = Trip %>% 
+  mutate(
+    member_casual = case_when(
+      member_casual=="Subscriber" ~ "member",
+      member_casual=="Customer" ~ "casual",
+      TRUE ~ member_casual
+    )
+  )
+Trip %>% count(member_casual)
+```
+
+Second, we create some new variables:
+- time-related variables: year, month, week, day, weekday of the ride
+- `ride_length`: equals `ended_at` minus `started_at`
+- in_working_hours: an indicator if the trip happened during working office hours (9:00 to 17:00)
+```{r}
+Trip = Trip %>% 
+  mutate(
+    date = as_date(started_at),
+    year = year(date),
+    month = month(date),
+    day = day(date),
+    day_of_week = wday(date, label = TRUE)
+  )
+
+Trip = Trip %>% 
+  mutate(
+    ride_length = ended_at - started_at #in seconds
+  )
+
+Trip = Trip %>% 
+  mutate(
+    in_working_hours = ifelse(hour(started_at) %in% 9:15, 1, 0)
+  )
+```
+
+We need to check if any ride_length is negative, because it should be positive to show the length of each ride. As below, we find that the min is negative, so let filter out those negative rides. It could be errors when input data (need to check with the person with responsibility).
+```{r}
+skim_without_charts(Trip$ride_length)
+```
+
+```{r}
+nrow(Trip) # 3879822 obs
+
+# filter out
+Trip = Trip %>% 
+  filter(ride_length > 0) 
+
+Trip %>% 
+  skim_without_charts(ride_length)
+nrow(Trip) # 3879599 obs
+```
+
+
+
+Save this data for later analysis.
+```{r}
+arrow::write_parquet(Trip, "data/process/Trip_final.parquet")
+```
+
+
+# 4. Descriptive Statistics and Analysis
+
+**Summary statistics of `rde_length`**:
+```{r}
+skim_without_charts(as.numeric(Trip$ride_length))
+```
+
+**Frequency of casual vs member**
+```{r}
+Trip %>% 
+  count(member_casual) %>% 
+  mutate(pct =  n/sum(n)) # most of users are member: 76%
+```
+
+
+**Check average ride length between casual and member**:
+```{r}
+Trip %>% 
+  group_by(member_casual) %>% 
+  summarize(
+    n_rides = n()/1000, # in thousands
+    average_length = mean(ride_length, na.rm=TRUE),
+    median_length = median(ride_length, na.rm=TRUE),
+    min_length = min(ride_length, na.rm=TRUE),
+    max_length = max(ride_length, na.rm=TRUE)
+  ) %>% 
+  ungroup()
+```
+Casual ride longer than member around 4 times:
+```{r}
+3538.8 / 850.06
+```
+
+
+**Check the number of rides and the average ride length of each group (casual and member) for each weekdays**:
+```{r}
+Trip %>% 
+  group_by(member_casual, day_of_week) %>% 
+  summarize(
+    n_rides = n()/1000, # in thousands
+    average_ride_length = mean(ride_length, na.rm=TRUE)
+  ) %>% 
+  ungroup() %>% 
+  arrange(day_of_week, member_casual)
+```
+
+The first and second findings are as follows:
+- For `n_rides`: member tends to ride more times. The number of rides on weekdays are more than on weekends.
+- For `average_ride_length`: Although riding fewer times, for each times casual rides tend to be longer than member rides. There is no clear evidence that there is difference on ride lengths between rides on weekdays and weekends.
+- For casual, they rides more times on weekends, even though that the average ride length is not too different.
+```{r}
+Trip %>% 
+  group_by(member_casual, day_of_week) %>% 
+  summarize(
+    n_rides = n()/1000, # in thousands
+    average_ride_length = mean(ride_length, na.rm=TRUE)
+  ) %>% 
+  ungroup() %>% 
+  arrange(-n_rides, day_of_week, member_casual)
+```
+
+**Check monthly data average**:
+```{r}
+Trip %>% 
+  group_by(member_casual, month) %>% 
+  summarize(
+    n_rides = n()/1000, # in thousands
+    average_ride_length = mean(ride_length, na.rm=TRUE)
+  ) %>% 
+  ungroup() %>% 
+  arrange(month, member_casual)  
+```
+
+The results confirm our finding above. But we find a trend that people ride more on summer months (like June to September).
+
+**Check the rides happens during working hours or not**
+```{r}
+Trip %>% 
+  count(in_working_hours) %>% 
+  mutate(pct = n/sum(n))
+```
+See that most of trips happens out of working hours (64%).
+Next, we check when casual vs members will use bikes.
+```{r}
+Trip %>% 
+  group_by(member_casual, in_working_hours) %>% 
+  summarize(
+    n_rides = n()/1000, # in thousands
+    average_ride_length = mean(ride_length, na.rm=TRUE)
+  ) %>% 
+  ungroup() %>% 
+  arrange(member_casual, in_working_hours)  
+```
+
+The second findings are that:
+- There is no difference for casual rides. They use bikers similarly during or out of working hours.
+- For member, they use more often out of working hours. It seems that on working hours, they need to go to work so can't ride.
+
+
+# 5. Visualization
+
+Figures 1 just shows a simple fact that members ride more times but with only a short ride length.
+```{r}
+Data_Fig1 = Trip %>% 
+  group_by(member_casual) %>% 
+  summarize(
+    n_rides = round(n()/1000, digits = 0), # in thousands
+    average_length = as.numeric(round(mean(ride_length, na.rm=TRUE), digits = 0)),
+    #median_length = round(median(ride_length, na.rm=TRUE), digits = 0),
+    #min_length = round(min(ride_length, na.rm=TRUE), digits = 0),
+    #max_length = round(max(ride_length, na.rm=TRUE), digits = 0)
+  ) %>% 
+  ungroup() %>% 
+  mutate(
+    member_casual = as.factor(member_casual),
+  )
+
+Data_Fig1 = Data_Fig1 %>% 
+  pivot_longer(-member_casual, names_to = "var")
+
+Data_Fig1
+```
+
+```{r}
+fig1 = Data_Fig1 %>% 
+  ggplot(aes(x=var, y = value, fill=member_casual)) + 
+  geom_bar(stat = "identity", position=position_dodge()) +
+  geom_text(aes(label=value), size=3) +
+  theme_minimal() + xlab("Average length (average_length) and the number of rides (n_rides)") + ylab("In seconds for average length and times for n_rides") +
+  labs(title="Ride length and the number of rides by member types")
+
+fig1
+```
+
+
+Figure 2 shows the number of rides by day of weeks.
+
+```{r}
+Data_Fig2 = Trip %>% 
+  group_by(member_casual, day_of_week) %>% 
+  summarize(
+    n_rides = round(n()/1000, digits = 0), # in thousands
+    average_ride_length = round(as.numeric(mean(ride_length, na.rm=TRUE)/60), digits = 0) # in minutes
+  ) %>% 
+  ungroup() %>% 
+  arrange(day_of_week, member_casual) %>% 
+  mutate(
+    member_casual = as.factor(member_casual),
+    day_of_week = as.factor(day_of_week)
+  )
+```
+
+
+```{r}
+fig2 = Data_Fig2 %>% 
+  ggplot(aes(x=day_of_week, y = n_rides, fill=member_casual)) + 
+  geom_bar(stat = "identity", position=position_dodge()) +
+  geom_text(aes(label=n_rides), size=3) +
+  theme_minimal() + xlab("Days of week") + ylab("Number of rides")  +
+  labs(title="The number of rides by day of week")
+
+fig2
+```
+
+Figure 3 shows the difference on using by working hours or not:
+```{r}
+Data_Fig3 = Trip %>% 
+  group_by(member_casual, in_working_hours) %>% 
+  summarize(
+    n_rides = round(n()/1000, digits = 0), # in thousands
+    average_ride_length = round(mean(ride_length, na.rm=TRUE)/60, digits = 0)
+  ) %>% 
+  ungroup() %>% 
+  arrange(member_casual, in_working_hours) %>% 
+  mutate(
+    member_casual = as.factor(member_casual),
+    in_working_hours = as.factor(in_working_hours),
+  )
+```
+```{r}
+fig3 = Data_Fig3 %>% 
+  ggplot(aes(x=in_working_hours, y=n_rides, fill=member_casual)) + 
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(aes(label=n_rides), size=3) +
+  theme_minimal() + xlab("In working hours or not") + ylab("Number of rides") +
+  labs(title="The number of rides in and out of working hours")
+
+fig3
+```
+
+
+
+Save these plots:
+```{r}
+ggsave(fig1, filename = "fig/fig1_casual_member.png")
+ggsave(fig2, filename = "fig/fig2_by_weekdays.png")
+ggsave(fig3, filename = "fig/fig3_by_working_hours.png")
+```
+
+
+
+
+
+
