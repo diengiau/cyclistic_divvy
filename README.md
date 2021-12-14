@@ -5,4 +5,3 @@ Case study 1 for Google Data Analytics class
 
 [Google slide](https://docs.google.com/presentation/d/1b1iyuXeipWlrtTCtgPX3YKdnJyvH0zPJM-VqOaRT40E/edit?usp=sharing)
 
-<
